@@ -1,0 +1,15 @@
+# Python cache and environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Environment files
+.env*
+!.env.example
+
+# Logs & temp
+*.log
+.DS_Store
