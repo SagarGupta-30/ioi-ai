@@ -9,8 +9,26 @@ An end-to-end, privacy-conscious, **100% free and local** Retrieval-Augmented Ge
 
 ## Architecture Overview
 
-IOI AI is built on a decoupled, production-hardened multi-tier architecture featuring an **Intelligent Query Router and Hybrid Retrieval Engine**:
+IOI AI is built on a decoupled, production-hardened multi-tier architecture featuring an **Intelligent Query Router and Hybrid Retrieval Engine**. It supports two execution environments:
 
+### 1. Cloud Production Architecture
+```
+[ Next.js Frontend ] (Hosted on Vercel)
+        │
+        ▼ HTTPS REST (NEXT_PUBLIC_API_URL)
+[ Node/Express Backend Proxy ] (Hosted on Render Web Service)
+   ├── MongoDB Atlas (Student Directory REST CRUD)
+   └── Validates query parameters & timeouts
+        │
+        ▼ HTTPS REST (RAG_SERVICE_URL)
+[ Python FastAPI RAG Service ] (Hosted on Hugging Face Spaces / Docker)
+   ├── Intelligent Query Router (Deterministic Rule & Regex Classifier)
+   ├── Sentence-Transformers (all-MiniLM-L6-v2 — 384-dim dense vectors)
+   ├── ChromaDB Vector Store (data/vectorstore_hf — 1,097 records)
+   └── Cloud LLM Inference (Hugging Face Serverless API — Llama-3.2-1B-Instruct)
+```
+
+### 2. Local Development Architecture
 ```
 [ Next.js Frontend ] (Port 3000)
         │
@@ -88,16 +106,16 @@ Incoming natural-language queries are classified **deterministically** using rul
 
 ## Technology Stack
 
-| Layer | Component | Specification |
-|---|---|---|
-| **Frontend** | Next.js 16 (App Router) + Tailwind CSS | Port `3000` |
-| **Backend API** | Node.js + Express + TypeScript | Port `5001` |
-| **Primary DB** | MongoDB Atlas (`ioi_ai.students`) | 1,097 documents |
-| **RAG Service** | Python 3.12 + FastAPI + Uvicorn | Port `8000` |
-| **Query Router** | Deterministic Regex & Rule Classifier | `app/query_router.py` |
-| **Embeddings** | FastEmbed (`BAAI/bge-small-en-v1.5`) | 384 dimensions, local ONNX |
-| **Vector Store** | ChromaDB (`PersistentClient`) | Local HNSW cosine index at `data/vectorstore/` |
-| **LLM Runtime** | Ollama (`llama3.2:1b`) | Port `11434`, zero temperature |
+| Layer | Component | Local Specification | Cloud / Production Specification |
+|---|---|---|---|
+| **Frontend** | Next.js 16 (App Router) + Tailwind CSS | Port `3000` (`npm run dev`) | **Vercel** (`frontend/vercel.json`) |
+| **Backend API** | Node.js + Express + TypeScript | Port `5001` (`npm run dev`) | **Render Web Service** (`render.yaml`) |
+| **Primary DB** | MongoDB Atlas (`ioi_ai.students`) | 1,097 documents | MongoDB Atlas Production Cluster |
+| **RAG Service** | Python 3.12 + FastAPI + Uvicorn | Port `8000` | **Hugging Face Spaces** (Docker, Port `7860`) |
+| **Query Router** | Deterministic Regex & Rule Classifier | `app/query_router.py` | `app/query_router.py` (Rule-based) |
+| **Embeddings** | FastEmbed / Sentence-Transformers | FastEmbed (`BAAI/bge-small-en-v1.5`, 384d) | Sentence-Transformers (`all-MiniLM-L6-v2`, 384d) |
+| **Vector Store** | ChromaDB (`PersistentClient`) | `data/vectorstore/` (BGE index) | `data/vectorstore_hf/` (MiniLM index) |
+| **LLM Runtime** | Configurable (`LLM_PROVIDER`) | Ollama (`llama3.2:1b` @ Port 11434) | Hugging Face Serverless Inference API (`Llama-3.2-1B-Instruct`) |
 
 ---
 
@@ -803,19 +821,35 @@ The script validates pre-flight dependencies, safely starts any offline services
   - Ollama: `systemctl start ollama`
 - **Reverse Proxy:** Terminate SSL/TLS at Nginx or Caddy and route `/api` to port `5001` and UI to port `3000`.
 
-### 7. Health Endpoints
+### 7. Cloud Production Deployment (Vercel + Render + Hugging Face Spaces)
+
+For full step-by-step instructions, see the complete guide: [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md).
+
+#### Deployment Architecture
+| Component | Platform | Configuration File | Key Environment Variables |
+|---|---|---|---|
+| **Frontend** | [Vercel](https://vercel.com) | `frontend/vercel.json` | `NEXT_PUBLIC_API_URL=https://<your-backend>.onrender.com` |
+| **Backend** | [Render](https://render.com) | `render.yaml` | `MONGODB_URI`, `RAG_SERVICE_URL=https://<your-space>.hf.space`, `CORS_ORIGIN` |
+| **RAG Service** | [Hugging Face Spaces](https://huggingface.co/spaces) | `rag-service/Dockerfile` | `EMBEDDING_PROVIDER=sentence-transformers`, `LLM_PROVIDER=huggingface`, `HF_TOKEN` |
+
+#### Quick Deployment Sequence
+1. **RAG Service (Hugging Face Spaces):** Create a Docker Space (blank), push `rag-service/` contents along with `data/vectorstore_hf/`, and configure `HF_TOKEN`. The container exposes port `7860`.
+2. **Backend (Render):** Create a Web Service connected to the GitHub repo using `render.yaml` Blueprint or root directory `backend`. Set `RAG_SERVICE_URL` to the Hugging Face Space URL.
+3. **Frontend (Vercel):** Import repository, set Root Directory to `frontend`, and configure `NEXT_PUBLIC_API_URL` to point to the Render backend URL.
+
+### 8. Health Endpoints
 - `GET http://localhost:5001/api/health` — Node/Express backend status and MongoDB connectivity
 - `GET http://localhost:8000/api/health` — FastAPI status, ChromaDB record count (1,097), and Ollama status
 - `GET http://localhost:11434/api/tags` — Ollama model inventory
 - `GET http://localhost:3000` — Next.js frontend availability
 
-### 8. API Endpoints
+### 9. API Endpoints
 - `POST http://localhost:5001/api/rag/query` — Primary natural language query endpoint
 - `GET http://localhost:5001/api/rag/metrics` — Recent telemetry log
 - `GET http://localhost:5001/api/rag/metrics/summary` — Aggregated metrics & latency percentiles
 - `GET http://localhost:5001/api/students` — Student directory CRUD
 
-### 9. Build Commands
+### 10. Build Commands
 ```bash
 # Backend TypeScript compilation
 cd backend && npm run build
@@ -824,7 +858,7 @@ cd backend && npm run build
 cd frontend && npm run build
 ```
 
-### 10. Complete Test Suite
+### 11. Complete Test Suite
 ```bash
 # RAG Unit & Integration Tests
 cd rag-service
@@ -847,13 +881,13 @@ bash -n start.sh
 ./start.sh --smoke-test
 ```
 
-### 11. Troubleshooting
+### 12. Troubleshooting
 - **FastAPI / Express port conflict:** Check listening PIDs: `lsof -nP -i :8000 -sTCP:LISTEN` or `lsof -nP -i :5001 -sTCP:LISTEN`. Re-run `./start.sh` which automatically identifies and reuses compatible processes.
 - **Ollama unavailable:** Ensure Ollama is running (`ollama serve`). Verify with `curl http://localhost:11434/api/tags`.
 - **Model missing error:** Run `ollama pull llama3.2:1b`.
 - **ChromaDB empty:** Rebuild vector store from MongoDB: `cd rag-service && python3 -m app.scripts.build_vector_store`.
 
-### 12. Security Considerations
+### 13. Security Considerations
 - **Proxy Isolation:** Browser clients strictly contact Express (`:5001`). No direct browser exposure of FastAPI, MongoDB, or Ollama.
 - **Payload Limits:** Express restricts request body size to `1MB` (`express.json({ limit: "1mb" })`).
 - **Query Length Caps:** Queries are constrained to `1,000` characters.
