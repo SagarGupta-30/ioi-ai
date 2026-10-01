@@ -48,6 +48,23 @@ export class RAGServiceError extends Error {
   }
 }
 
+function getRagBaseUrl(): string {
+  const raw = (process.env.RAG_SERVICE_URL || "http://localhost:8000").trim().replace(/\/+$/, "");
+  return raw.endsWith("/api") ? raw.slice(0, -4) : raw;
+}
+
+function getRagHeaders(contentType: boolean = true): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (contentType) {
+    headers["Content-Type"] = "application/json";
+  }
+  const token = process.env.RAG_SERVICE_AUTH_TOKEN || process.env.HF_TOKEN;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 /**
  * Send a query to the Python FastAPI RAG service.
  */
@@ -55,16 +72,14 @@ export async function queryRAGService(
   options: RAGQueryOptions,
   timeoutMs: number = 60000,
 ): Promise<RAGResponse> {
-  const ragBaseUrl = (process.env.RAG_SERVICE_URL || "http://localhost:8000").replace(/\/+$/, "");
+  const ragBaseUrl = getRagBaseUrl();
   const targetUrl = `${ragBaseUrl}/api/rag/query`;
 
   let response: Response;
   try {
     response = await fetch(targetUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: getRagHeaders(true),
       body: JSON.stringify(options),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -142,7 +157,7 @@ export async function getRAGMetrics(
   status?: string,
   timeoutMs: number = 10000,
 ): Promise<{ success: boolean; count: number; metrics: QueryMetricRecord[] }> {
-  const ragBaseUrl = (process.env.RAG_SERVICE_URL || "http://localhost:8000").replace(/\/+$/, "");
+  const ragBaseUrl = getRagBaseUrl();
   const params = new URLSearchParams();
   if (limit) params.set("limit", String(limit));
   if (queryType) params.set("query_type", queryType);
@@ -154,7 +169,7 @@ export async function getRAGMetrics(
   try {
     response = await fetch(targetUrl, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: getRagHeaders(false),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err: unknown) {
@@ -194,14 +209,14 @@ export async function getRAGMetrics(
 export async function getRAGMetricsSummary(
   timeoutMs: number = 10000,
 ): Promise<{ success: boolean; summary: MetricsSummary }> {
-  const ragBaseUrl = (process.env.RAG_SERVICE_URL || "http://localhost:8000").replace(/\/+$/, "");
+  const ragBaseUrl = getRagBaseUrl();
   const targetUrl = `${ragBaseUrl}/api/metrics/summary`;
 
   let response: Response;
   try {
     response = await fetch(targetUrl, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: getRagHeaders(false),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err: unknown) {

@@ -1,0 +1,18 @@
+{
+  "include": [
+    "rag-service"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "rag-service/.venv"
+  ],
+  "extraPaths": [
+    "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages",
+    "rag-service",
+    "rag-service/app"
+  ],
+  "venvPath": "rag-service",
+  "venv": ".venv",
+  "reportMissingImports": "none"
+}

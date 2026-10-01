@@ -27,7 +27,27 @@ def get_vector_store_dir() -> Path:
     """Return the configured or default directory for vector store persistence."""
     custom_path = os.environ.get("VECTOR_STORE_PATH")
     if custom_path:
-        return Path(custom_path).resolve()
+        p = Path(custom_path)
+        if not p.is_absolute():
+            if p.exists():
+                return p.resolve()
+            candidate_service = Path(__file__).resolve().parents[1] / p
+            if candidate_service.exists():
+                return candidate_service.resolve()
+            candidate_workspace = Path(__file__).resolve().parents[2] / p
+            if candidate_workspace.exists():
+                return candidate_workspace.resolve()
+        return p.resolve()
+
+    provider = os.environ.get("EMBEDDING_PROVIDER", "fastembed").lower()
+    if provider in ("sentence-transformers", "sentence_transformers"):
+        service_hf_dir = Path(__file__).resolve().parents[1] / "data" / "vectorstore_hf"
+        if service_hf_dir.exists():
+            return service_hf_dir
+        root_hf_dir = Path(__file__).resolve().parents[2] / "data" / "vectorstore_hf"
+        if root_hf_dir.exists():
+            return root_hf_dir
+
     return DEFAULT_VECTOR_STORE_DIR
 
 

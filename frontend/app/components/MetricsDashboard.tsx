@@ -44,8 +44,9 @@ export default function MetricsDashboard() {
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
-  const backendUrl =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+  const backendUrl = (
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001"
+  ).replace(/\/+$/, "");
 
   const fetchMetrics = useCallback(async () => {
     setIsLoading(true);
