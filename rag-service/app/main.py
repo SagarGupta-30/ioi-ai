@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("rag-service")
 
 from app.generator import (
+    DEFAULT_HF_MODEL,
     DEFAULT_OLLAMA_BASE_URL,
     DEFAULT_OLLAMA_MODEL,
     generate_rag_response,
@@ -98,6 +99,8 @@ class RAGQueryResponse(BaseModel):
     timings: Optional[dict[str, float]] = Field(default=None, description="Per-stage latency breakdown in ms")
 
 
+@app.get("/")
+@app.get("/health")
 @app.get("/api/health")
 def health_check() -> dict[str, Any]:
     """
@@ -116,19 +119,43 @@ def health_check() -> dict[str, Any]:
     except Exception as e:
         vector_store_status = f"error: {str(e)}"
 
-    # 2. Check Ollama
-    ollama_host = os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL).rstrip("/")
-    model_name = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
-    ollama_status = "unavailable"
-    try:
-        req = urllib.request.Request(f"{ollama_host}/api/tags", method="GET")
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            if resp.status == 200:
-                ollama_status = "ready"
-    except Exception:
-        ollama_status = "unreachable"
+    # 2. Check LLM Runtime
+    llm_provider = os.environ.get("LLM_PROVIDER", "ollama").lower()
+    if llm_provider == "huggingface":
+        hf_token = os.environ.get("HF_TOKEN")
+        hf_model = os.environ.get("HF_MODEL", DEFAULT_HF_MODEL)
+        if not hf_token:
+            llm_status = "unconfigured: missing HF_TOKEN"
+            llm_ready = False
+        else:
+            llm_status = "ready"
+            llm_ready = True
+        llm_info = {
+            "provider": "huggingface",
+            "status": llm_status,
+            "model": hf_model,
+            "endpoint": "https://api-inference.huggingface.co",
+        }
+    else:
+        ollama_host = os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL).rstrip("/")
+        model_name = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+        ollama_status = "unavailable"
+        try:
+            req = urllib.request.Request(f"{ollama_host}/api/tags", method="GET")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status == 200:
+                    ollama_status = "ready"
+        except Exception:
+            ollama_status = "unreachable"
+        llm_ready = (ollama_status == "ready")
+        llm_info = {
+            "provider": "ollama",
+            "status": ollama_status,
+            "model": model_name,
+            "endpoint": ollama_host,
+        }
 
-    overall_ok = (vector_store_status == "ready") and (ollama_status == "ready")
+    overall_ok = (vector_store_status == "ready") and llm_ready
 
     return {
         "status": "ok" if overall_ok else "degraded",
@@ -139,15 +166,14 @@ def health_check() -> dict[str, Any]:
         },
         "embeddings": {
             "provider": os.environ.get("EMBEDDING_PROVIDER", "fastembed"),
-            "model": os.environ.get("FASTEMBED_MODEL", "BAAI/bge-small-en-v1.5"),
+            "model": os.environ.get("EMBEDDING_MODEL") or (
+                "sentence-transformers/all-MiniLM-L6-v2"
+                if os.environ.get("EMBEDDING_PROVIDER", "").lower() in ("sentence-transformers", "sentence_transformers")
+                else os.environ.get("FASTEMBED_MODEL", "BAAI/bge-small-en-v1.5")
+            ),
             "dimensions": 384,
         },
-        "llm_runtime": {
-            "provider": os.environ.get("LLM_PROVIDER", "ollama"),
-            "status": ollama_status,
-            "model": model_name,
-            "endpoint": ollama_host,
-        },
+        "llm_runtime": llm_info,
     }
 
 

@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 # Load .env before anything else
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # type: ignore[import-not-found,import-untyped]
 load_dotenv()
 
 # Add project root so imports work
@@ -36,14 +36,26 @@ BATCH_SIZE = 64
 
 
 def main() -> None:
-    if not INPUT_FILE.exists():
-        print(f"[build_embeddings] Error: Input file not found: {INPUT_FILE}", file=sys.stderr)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Build embeddings for RAG student documents.")
+    parser.add_argument("--input", "-i", type=Path, default=None, help="Input documents JSON file")
+    parser.add_argument("--output", "-o", type=Path, default=None, help="Output embeddings JSON file")
+    parser.add_argument("--batch-size", "-b", type=int, default=BATCH_SIZE, help="Batch size for embedding")
+    args = parser.parse_args()
+
+    input_file = args.input or Path(os.environ.get("DOCUMENTS_INPUT_FILE", INPUT_FILE))
+    output_file = args.output or Path(os.environ.get("EMBEDDINGS_OUTPUT_FILE", OUTPUT_FILE))
+    batch_size = args.batch_size
+
+    if not input_file.exists():
+        print(f"[build_embeddings] Error: Input file not found: {input_file}", file=sys.stderr)
         print("[build_embeddings] Run 'python -m app.scripts.build_documents' first.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"[build_embeddings] Reading documents from {INPUT_FILE}...")
+    print(f"[build_embeddings] Reading documents from {input_file}...")
     try:
-        with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        with open(input_file, "r", encoding="utf-8") as f:
             documents = json.load(f)
     except Exception as e:
         print(f"[build_embeddings] Failed to read or parse input JSON: {e}", file=sys.stderr)
@@ -69,11 +81,11 @@ def main() -> None:
             sys.exit(1)
         contents.append(content)
 
-    print(f"[build_embeddings] Generating embeddings (batch size: {BATCH_SIZE})...")
+    print(f"[build_embeddings] Generating embeddings (batch size: {batch_size})...")
     start_time = time.time()
 
     try:
-        embeddings = embed_documents(contents, batch_size=BATCH_SIZE)
+        embeddings = embed_documents(contents, batch_size=batch_size)
     except Exception as e:
         print(f"\n[build_embeddings] Error during embedding generation: {e}", file=sys.stderr)
         sys.exit(1)
@@ -111,8 +123,8 @@ def main() -> None:
         })
 
     # Save to JSON
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(output_records, f, indent=2, ensure_ascii=False)
 
     print("=" * 50)
@@ -122,7 +134,7 @@ def main() -> None:
     print(f"  Embeddings generated: {total_embeddings}")
     print(f"  Embedding dimensions: {dim}")
     print(f"  Processing time:      {duration:.2f}s")
-    print(f"  Output file:          {OUTPUT_FILE}")
+    print(f"  Output file:          {output_file}")
     print("=" * 50)
 
     # Display small sample without printing complete vectors

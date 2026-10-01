@@ -28,7 +28,7 @@ load_dotenv()
 
 from app.database import connect
 from app.embeddings import embed_text
-from app.generator import build_rag_prompt, call_ollama
+from app.generator import build_rag_prompt, call_ollama, generate_answer
 from app.retriever import (
     DEFAULT_SIMILARITY_THRESHOLD,
     RetrievalResult,
@@ -258,7 +258,7 @@ def execute_structured_query(
     t_ctx = (time.perf_counter() - t0_ctx) * 1000
 
     t0_gen = time.perf_counter()
-    answer = call_ollama(prompt)
+    answer = generate_answer(prompt=prompt)
     t_gen = (time.perf_counter() - t0_gen) * 1000
 
     t_total = (time.perf_counter() - t_start) * 1000 + t_class
@@ -383,7 +383,7 @@ def execute_hybrid_query(
     t_ctx = (time.perf_counter() - t0_ctx) * 1000
 
     t0_gen = time.perf_counter()
-    answer = call_ollama(prompt)
+    answer = generate_answer(prompt=prompt)
     t_gen = (time.perf_counter() - t0_gen) * 1000
 
     t_total = (time.perf_counter() - t_start) * 1000 + t_class
@@ -474,7 +474,7 @@ def execute_semantic_query(
     t_ctx = (time.perf_counter() - t0_ctx) * 1000
 
     t0_gen = time.perf_counter()
-    answer = call_ollama(prompt)
+    answer = generate_answer(prompt=prompt)
     t_gen = (time.perf_counter() - t0_gen) * 1000
 
     t_total = (time.perf_counter() - t_start) * 1000 + t_class

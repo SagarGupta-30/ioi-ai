@@ -27,6 +27,10 @@ from app.retriever import RetrievalResult, format_context, retrieve_students
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "llama3.2:1b"
 
+# Default Hugging Face configuration
+DEFAULT_HF_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
+DEFAULT_HF_TIMEOUT_SECONDS = 30
+
 SYSTEM_PROMPT = """You are IOI AI, a knowledgeable, strictly factual AI assistant for the PW Institute of Innovation (PW IOI) School of Technology student directory.
 
 STRICT RAG RULES:
@@ -115,21 +119,116 @@ def call_ollama(
         ) from e
 
 
+def call_huggingface(
+    prompt: str,
+    system_prompt: str = SYSTEM_PROMPT,
+    token: str | None = None,
+    model: str | None = None,
+    timeout_seconds: int | None = None,
+) -> str:
+    """
+    Call Hugging Face Serverless Inference API (/chat/completions) using official InferenceClient.
+
+    Args:
+        prompt: User prompt containing question and context.
+        system_prompt: Instructions constraining model behavior.
+        token: Hugging Face API token (defaults to HF_TOKEN env var).
+        model: Hugging Face model repository tag (defaults to HF_MODEL or meta-llama/Llama-3.2-1B-Instruct).
+        timeout_seconds: Request timeout in seconds (defaults to HF_TIMEOUT_SECONDS or 30).
+
+    Returns:
+        Generated text response.
+    """
+    effective_token = token or os.environ.get("HF_TOKEN")
+    if not effective_token:
+        raise ValueError(
+            "HF_TOKEN environment variable is required when LLM_PROVIDER=huggingface. "
+            "Please set HF_TOKEN in your environment or .env file."
+        )
+
+    model_name = model or os.environ.get("HF_MODEL") or DEFAULT_HF_MODEL
+    effective_timeout = timeout_seconds or int(os.environ.get("HF_TIMEOUT_SECONDS", str(DEFAULT_HF_TIMEOUT_SECONDS)))
+
+    try:
+        from huggingface_hub import InferenceClient
+    except ImportError as e:
+        raise RuntimeError(
+            "huggingface_hub package is not installed. Please install it with 'pip install huggingface_hub>=0.20.0'."
+        ) from e
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+
+    try:
+        client = InferenceClient(model=model_name, token=effective_token, timeout=effective_timeout)
+        resp = client.chat_completion(
+            messages=messages,
+            max_tokens=300,
+            temperature=0.01,
+        )
+
+        # Extract text content safely from response object or dict
+        if hasattr(resp, "choices") and resp.choices:
+            choice = resp.choices[0]
+            if hasattr(choice, "message"):
+                msg = choice.message
+                if hasattr(msg, "content"):
+                    return (msg.content or "").strip()
+                elif isinstance(msg, dict):
+                    return (msg.get("content") or "").strip()
+            elif isinstance(choice, dict):
+                return (choice.get("message", {}).get("content") or "").strip()
+        elif isinstance(resp, dict):
+            choices = resp.get("choices", [])
+            if choices:
+                return (choices[0].get("message", {}).get("content") or "").strip()
+
+        return str(resp).strip()
+    except Exception as e:
+        err_msg = str(e)
+        if effective_token and effective_token in err_msg:
+            err_msg = err_msg.replace(effective_token, "[REDACTED_HF_TOKEN]")
+        raise RuntimeError(
+            f"Hugging Face inference request failed for model '{model_name}': {err_msg}"
+        ) from None
+
+
 def generate_answer(
-    query: str,
-    context: str,
+    query: str | None = None,
+    context: str | None = None,
+    prompt: str | None = None,
     provider: str | None = None,
 ) -> str:
     """
-    Generate an answer using the configured local LLM provider.
+    Generate an answer using the configured LLM provider.
+
+    Supports:
+      - 'ollama' (default, local development)
+      - 'huggingface' (cloud inference for Hugging Face Spaces deployment)
+
+    Args:
+        query: Optional user question (used with context to construct prompt).
+        context: Optional retrieved context (used with query to construct prompt).
+        prompt: Optional pre-constructed RAG prompt string.
+        provider: Provider override ('ollama' or 'huggingface').
     """
     llm_provider = (provider or os.environ.get("LLM_PROVIDER") or "ollama").lower()
-    prompt = build_rag_prompt(query, context)
+
+    if prompt is None:
+        if query is None or context is None:
+            raise ValueError("Either 'prompt' or both 'query' and 'context' must be provided.")
+        prompt = build_rag_prompt(query, context)
 
     if llm_provider == "ollama":
         return call_ollama(prompt=prompt)
+    elif llm_provider == "huggingface":
+        return call_huggingface(prompt=prompt)
     else:
-        raise ValueError(f"Unsupported LLM_PROVIDER: '{llm_provider}'. Supported: 'ollama'")
+        raise ValueError(
+            f"Unsupported LLM_PROVIDER: '{llm_provider}'. Supported: 'ollama', 'huggingface'"
+        )
 
 
 def generate_rag_response(

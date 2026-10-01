@@ -120,8 +120,9 @@ export default function RAGAssistant({ activeTab = "assistant" }: Props) {
   const [recentRecords, setRecentRecords] = useState<QueryMetricRecord[]>([]);
   const [isMetricsLoading, setIsMetricsLoading] = useState(false);
 
-  const backendUrl =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+  const backendUrl = (
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001"
+  ).replace(/\/+$/, "");
 
   // Fetch telemetry metrics
   const fetchMetrics = useCallback(async () => {

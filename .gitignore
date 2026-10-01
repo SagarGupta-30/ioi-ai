@@ -45,6 +45,8 @@ coverage/
 # ── Generated data (not committed to version control) ────────
 # ChromaDB vector store (binary index, must be rebuilt from source)
 data/vectorstore/
+data/vectorstore_hf/
+rag-service/data/
 # Metrics persistence log (runtime-generated, grows unboundedly)
 data/metrics/
 # Raw / processed / synthetic student documents

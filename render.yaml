@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: ioi-ai-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: MONGODB_URI
+        sync: false
+      - key: RAG_SERVICE_URL
+        sync: false
+      - key: RAG_SERVICE_TIMEOUT_MS
+        value: "60000"

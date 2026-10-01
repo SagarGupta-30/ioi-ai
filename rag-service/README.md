@@ -35,3 +35,4 @@ curl http://localhost:8000/health
 - Document retrieval & reranking
 - LLM integration
 - FastAPI migration
+\]\
