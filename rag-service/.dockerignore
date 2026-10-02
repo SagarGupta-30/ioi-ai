@@ -1,10 +1,33 @@
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.venv
-.env
-.git
+# Environment and secrets (CRITICAL: Never include in image)
+.env*
+!.env.example
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Local vector store (keep untouched, NOT for deployment)
+data/vectorstore/
+
+# Git and OS metadata
+.git/
 .gitignore
 .DS_Store
-logs
+Thumbs.db
+
+# Logs and tests
+*.log
+logs/
+.pytest_cache/
+coverage/
+.coverage
+
+# Node artifacts if any
+node_modules/
