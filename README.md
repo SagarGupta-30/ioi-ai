@@ -144,6 +144,8 @@ RAG_SERVICE_URL=http://localhost:8000
 ```
 
 ### 2. RAG Service (`rag-service/.env`)
+
+**Local Development Configuration (Ollama + FastEmbed):**
 ```env
 PORT=8000
 CORS_ORIGIN=*
@@ -156,6 +158,21 @@ LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2:1b
 OLLAMA_TIMEOUT_SECONDS=120
+```
+
+**Cloud / Hugging Face Spaces Deployment Configuration:**
+```env
+PORT=7860
+CORS_ORIGIN=*
+MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/ioi_ai
+MONGODB_DATABASE=ioi_ai
+EMBEDDING_PROVIDER=sentence-transformers
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+VECTOR_STORE_PATH=../data/vectorstore_hf
+LLM_PROVIDER=huggingface
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+HF_MODEL=meta-llama/Llama-3.2-1B-Instruct
+HF_TIMEOUT_SECONDS=30
 ```
 
 ### 3. Frontend (`frontend/.env.local`)
@@ -750,34 +767,41 @@ IOI AI operates as a 4-tier decoupled local system:
 - **Tier 1 (Frontend):** Next.js 16 (App Router) on Port `3000`. Exclusively sends queries to the Express backend proxy.
 - **Tier 2 (Backend Proxy):** Node.js + Express + TypeScript on Port `5001`. Handles input validation, body limits (1MB), timeout management, and MongoDB Atlas demographic aggregations.
 - **Tier 3 (RAG Service):** Python 3 + FastAPI on Port `8000`. Houses the deterministic Query Router, FastEmbed ONNX embedding generator, ChromaDB local vector store (1,097 records), and prompt formatting.
-- **Tier 4 (LLM Runtime):** Local Ollama service on Port `11434` running `llama3.2:1b`.
+- **Tier 4 (LLM Runtime):** Local Ollama service on Port `11434` running `llama3.2:1b`, or Hugging Face Serverless Inference API for cloud deployment.
 
-> **CRITICAL LOCAL DEPLOYMENT REQUIREMENT:**
-> Ollama runs **100% locally and free**. Deployment target environments (bare-metal, VMs, or private servers) must provide host CPU/GPU hardware capable of running Ollama and the `llama3.2:1b` model locally. The application does **not** rely on external OpenAI, Gemini, or paid cloud APIs.
+> **FLEXIBLE DEPLOYMENT STRATEGY:**
+> - **Local Development:** 100% free and offline using Ollama (`llama3.2:1b`) + FastEmbed ONNX (`bge-small-en-v1.5`).
+> - **Cloud Production:** Low-latency cloud inference via Hugging Face Serverless API (`Llama-3.2-1B-Instruct`) + Sentence-Transformers (`all-MiniLM-L6-v2`) on Hugging Face Spaces, Render, and Vercel.
 
 ### 2. Prerequisites
 - **Operating System:** macOS (Apple Silicon recommended) or Linux (Ubuntu 22.04+ / Debian 12+)
 - **Python:** 3.10+ (tested on Python 3.12 / 3.14)
 - **Node.js:** 18+ (tested on Node v20+)
 - **npm:** 9+
-- **Ollama:** Installed with `llama3.2:1b` model pulled (`ollama pull llama3.2:1b`)
+- **Local LLM (Local Mode):** Ollama installed with `llama3.2:1b` model pulled (`ollama pull llama3.2:1b`)
+- **Cloud LLM (Cloud Mode):** Free Hugging Face user access token (`HF_TOKEN`) from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 - **MongoDB Atlas:** Read-only access URI configured in `.env` files
 
-### 3. Environment Variables
+### 3. Environment Variables Reference
 
 | Variable | Tier | Required | Default | Description |
 |---|---|:---:|---|---|
-| `PORT` | Backend | Optional | `5001` | HTTP port for Node/Express server |
+| `PORT` | Backend / RAG | Optional | `5001` (Backend) / `8000` or `7860` (RAG) | HTTP port for server process |
 | `CORS_ORIGIN` | Backend / RAG | Optional | `*` | Allowed CORS origins for API clients |
 | `MONGODB_URI` | Backend / RAG | **Required** | None | MongoDB Atlas connection string |
 | `MONGODB_DATABASE` | RAG Service | Optional | `ioi_ai` | Target MongoDB database name |
-| `RAG_SERVICE_URL` | Backend | **Required** | `http://localhost:8000` | Internal FastAPI service endpoint |
-| `NEXT_PUBLIC_API_URL`| Frontend | **Required** | `http://localhost:5001` | Public backend proxy endpoint |
-| `LLM_PROVIDER` | RAG Service | Optional | `ollama` | Local LLM engine |
+| `RAG_SERVICE_URL` | Backend | **Required** | `http://localhost:8000` | FastAPI service endpoint (Local or HF Space) |
+| `RAG_SERVICE_TIMEOUT_MS` | Backend | Optional | `60000` | Request timeout in ms from backend to RAG service |
+| `RAG_SERVICE_AUTH_TOKEN` | Backend | Optional | None | Optional Bearer token for private HF Spaces |
+| `NEXT_PUBLIC_API_URL`| Frontend | **Required** | `http://localhost:5001` | Public backend proxy endpoint (Render in prod) |
+| `LLM_PROVIDER` | RAG Service | Optional | `ollama` | LLM engine (`ollama` or `huggingface`) |
 | `OLLAMA_BASE_URL` | RAG Service | Optional | `http://localhost:11434` | Ollama HTTP host |
-| `OLLAMA_MODEL` | RAG Service | Optional | `llama3.2:1b` | Model tag |
-| `OLLAMA_TIMEOUT_SECONDS` | RAG Service | Optional | `120` | Request timeout (accounts for cold start) |
-| `EMBEDDING_PROVIDER`| RAG Service | Optional | `fastembed` | Dense embeddings engine |
+| `OLLAMA_MODEL` | RAG Service | Optional | `llama3.2:1b` | Ollama model tag |
+| `OLLAMA_TIMEOUT_SECONDS` | RAG Service | Optional | `120` | Request timeout for Ollama |
+| `HF_TOKEN` | RAG Service | **Required for HF** | None | Hugging Face Access Token |
+| `HF_MODEL` | RAG Service | Optional | `meta-llama/Llama-3.2-1B-Instruct` | Target Hugging Face inference model |
+| `HF_TIMEOUT_SECONDS` | RAG Service | Optional | `30` | Request timeout in seconds for HF inference |
+| `EMBEDDING_PROVIDER`| RAG Service | Optional | `fastembed` | Embeddings engine (`fastembed` or `sentence-transformers`) |
 | `EMBEDDING_MODEL` | RAG Service | Optional | `BAAI/bge-small-en-v1.5` | Embedding model tag (384 dimensions) |
 | `VECTOR_STORE_PATH` | RAG Service | Optional | `../data/vectorstore` | ChromaDB persistence path |
 | `TOP_K_DEFAULT` | RAG Service | Optional | `5` | Default number of records retrieved |
@@ -860,8 +884,9 @@ cd frontend && npm run build
 
 ### 11. Complete Test Suite
 ```bash
-# RAG Unit & Integration Tests
+# RAG Provider, Unit & Integration Tests
 cd rag-service
+python3 -m unittest app/scripts/test_providers.py
 python3 -m app.scripts.test_metrics
 python3 -m app.scripts.test_query_router
 python3 -m app.scripts.evaluate_retrieval
@@ -869,6 +894,15 @@ python3 -m app.scripts.evaluate_rag
 python3 -m app.scripts.test_api
 python3 -m app.scripts.evaluate_step_8k
 python3 -m app.scripts.benchmark_production_performance
+
+# Vector Store Pre-Generation Commands
+# 1. Local BGE FastEmbed Store:
+python3 -m app.scripts.build_embeddings --provider fastembed --model BAAI/bge-small-en-v1.5 --output ../data/processed/student_embeddings.json
+python3 -m app.scripts.build_vector_store --input ../data/processed/student_embeddings.json --store-dir ../data/vectorstore
+
+# 2. Cloud Sentence-Transformers Store (all-MiniLM-L6-v2):
+python3 -m app.scripts.build_embeddings --provider sentence-transformers --model sentence-transformers/all-MiniLM-L6-v2 --output ../data/processed/student_embeddings_hf.json
+python3 -m app.scripts.build_vector_store --input ../data/processed/student_embeddings_hf.json --store-dir ../data/vectorstore_hf
 
 # Backend Tests
 cd ../backend
@@ -883,81 +917,82 @@ bash -n start.sh
 
 ### 12. Troubleshooting
 - **FastAPI / Express port conflict:** Check listening PIDs: `lsof -nP -i :8000 -sTCP:LISTEN` or `lsof -nP -i :5001 -sTCP:LISTEN`. Re-run `./start.sh` which automatically identifies and reuses compatible processes.
-- **Ollama unavailable:** Ensure Ollama is running (`ollama serve`). Verify with `curl http://localhost:11434/api/tags`.
-- **Model missing error:** Run `ollama pull llama3.2:1b`.
-- **ChromaDB empty:** Rebuild vector store from MongoDB: `cd rag-service && python3 -m app.scripts.build_vector_store`.
+- **Ollama unavailable (Local Mode):** Ensure Ollama is running (`ollama serve`). Verify with `curl http://localhost:11434/api/tags`.
+- **Model missing error (Local Mode):** Run `ollama pull llama3.2:1b`.
+- **Hugging Face Token Missing / 401 Unauthorized (Cloud Mode):** Ensure `HF_TOKEN` is exported in your environment or configured in Space secrets with Read access from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+- **Hugging Face 503 / Model Loading (Cloud Mode):** The serverless inference API loads models on-demand on the free tier. Set `HF_TIMEOUT_SECONDS=30` to permit warm-up on initial cold queries.
+- **Embedding / Vector Store Mismatch:** Never mix vector stores with mismatched embedding models. Use `VECTOR_STORE_PATH=../data/vectorstore` with `fastembed` (`BAAI/bge-small-en-v1.5`), and `VECTOR_STORE_PATH=../data/vectorstore_hf` with `sentence-transformers` (`all-MiniLM-L6-v2`).
+- **ChromaDB empty:** Rebuild the vector store using the commands in Section 11 above.
 
 ### 13. Security Considerations
 - **Proxy Isolation:** Browser clients strictly contact Express (`:5001`). No direct browser exposure of FastAPI, MongoDB, or Ollama.
 - **Payload Limits:** Express restricts request body size to `1MB` (`express.json({ limit: "1mb" })`).
 - **Query Length Caps:** Queries are constrained to `1,000` characters.
 - **Sanitized Errors:** Internal server stack traces, database strings, and paths are logged privately and never returned in client HTTP responses.
-- **No Committed Secrets:** Database URIs are kept in git-ignored `.env` files.
+- **No Committed Secrets:** Database URIs and tokens are kept in git-ignored `.env` files.
 
-### 13. Performance Limitations
-- **LLM Generation Bottleneck:** Inference on Apple Silicon takes ~2.5–6s per generation. Aggregation queries (counts) bypass the LLM and finish in under 50ms.
-- **Cold-Start Penalty:** When first loading `llama3.2:1b` into memory, a one-time ~5–10s cold-start delay may occur. Subsequent warm queries execute in ~3.5s.
+### 14. Performance Considerations & Latency
+- **Aggregation Routing:** Demographic count queries bypass vector retrieval and LLM inference, executing directly on MongoDB in **under 50ms** (~39ms).
+- **Local LLM Generation:** Inference on Apple Silicon takes ~2.5–6s per generation with `llama3.2:1b`. Initial cold load adds ~5–10s.
+- **Hugging Face Cloud Inference:** Fast response times (~1.5–3s) once warm. Cold starts may require a short warm-up delay.
 
-### 14. Known Limitations
+### 15. Known Limitations
 - **Directory Scope:** Public directory listings only contain basic institutional info (School, Campus, Batch, Gender). Synthetic profiles include sample skills/projects. Private contact info (phone, email, GPA) is intentionally omitted and strictly guarded against hallucination.
 
 ---
 
 ## Manual Deployment Checklist
 
-Before deploying the IOI AI project to production, review and decide upon each of the following infrastructure and operational requirements. Execute deployment steps manually based on your chosen hosting infrastructure:
+Before deploying the IOI AI project to production, review and execute each of the following deployment steps:
 
-### 1. Frontend Hosting
-- [ ] Decide on hosting platform for Next.js 16 (e.g., Vercel, Node server, Docker container, or private VM).
-- [ ] Ensure the runtime environment supports Next.js App Router and Node.js 18+.
-- [ ] Configure `NEXT_PUBLIC_API_URL` to point to the public Express backend proxy URL.
+### 1. Frontend Hosting (Vercel)
+- [ ] Connect GitHub repository to Vercel.
+- [ ] Set Root Directory to `frontend`.
+- [ ] Ensure Next.js App Router preset is selected with Node.js 18+.
+- [ ] Configure `NEXT_PUBLIC_API_URL` to point to the public Express backend proxy URL (e.g., `https://ioi-ai-backend.onrender.com`).
 
-### 2. Express Backend Hosting
-- [ ] Select deployment target for Node.js / Express proxy (e.g., containerized VM, serverless container, or dedicated instance).
-- [ ] Configure process supervisor (e.g., PM2, systemd, or container restart policy) for production execution (`npm run build && npm start`).
-- [ ] Restrict CORS origin in production via `CORS_ORIGIN` environment variable.
+### 2. Express Backend Hosting (Render)
+- [ ] Select deployment target for Node.js / Express proxy on Render Web Service.
+- [ ] Set Root Directory to `backend` or deploy via `render.yaml`.
+- [ ] Set Build Command to `npm install && npm run build` and Start Command to `npm start`.
+- [ ] Set `MONGODB_URI` and `RAG_SERVICE_URL` to the Hugging Face Space URL.
+- [ ] Configure `CORS_ORIGIN` to match your Vercel frontend domain.
 
-### 3. FastAPI RAG Service Hosting
-- [ ] Choose host environment for Python 3.10+ FastAPI application.
-- [ ] Configure production ASGI server (e.g., `uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2` or `gunicorn -k uvicorn.workers.UvicornWorker`).
-- [ ] Ensure internal network access between Express backend and FastAPI (`RAG_SERVICE_URL`).
+### 3. FastAPI RAG Service Hosting (Hugging Face Spaces)
+- [ ] Create a Docker Space on Hugging Face Spaces (Port 7860).
+- [ ] Set Repository Secret `HF_TOKEN` with a valid Hugging Face User Access Token.
+- [ ] Set Secret `MONGODB_URI` for read-only aggregation queries.
+- [ ] Deploy with `EMBEDDING_PROVIDER=sentence-transformers` and `VECTOR_STORE_PATH=/home/user/app/data/vectorstore_hf`.
 
 ### 4. MongoDB Atlas Configuration
 - [ ] Provision MongoDB Atlas database cluster with read-only application user credentials.
-- [ ] Configure IP access lists (Network Access) allowing traffic from backend and RAG service hosts.
-- [ ] Set `MONGODB_URI` securely in environment configuration without committing credentials to source.
+- [ ] Configure IP access lists (Network Access: `0.0.0.0/0` with secure password) for Render and Hugging Face.
+- [ ] Securely populate `MONGODB_URI` in Render and Hugging Face environment variables.
 
-### 5. Ollama Hosting & Model Strategy
-- [ ] Determine server host equipped with sufficient CPU/RAM or GPU for Ollama (`llama3.2:1b`).
-- [ ] Run `ollama pull llama3.2:1b` on the deployment host.
-- [ ] Configure `OLLAMA_BASE_URL` to point to the host instance (e.g., `http://localhost:11434` or internal cluster network).
+### 5. LLM Provider Strategy
+- [ ] **Local Mode:** Ollama installed locally with `llama3.2:1b` model pulled (`ollama pull llama3.2:1b`).
+- [ ] **Cloud Mode:** Hugging Face Serverless Inference API with `meta-llama/Llama-3.2-1B-Instruct` and configured `HF_TOKEN`.
 
 ### 6. ChromaDB Persistent Storage Strategy
-- [ ] Provision persistent disk volume for ChromaDB storage (`data/vectorstore/`).
-- [ ] Ensure container mounts or file paths retain vector embeddings across container restarts and redeployments.
-- [ ] If initial vector store is empty, run `python3 -m app.scripts.build_vector_store` once against MongoDB Atlas.
+- [ ] Ensure `data/vectorstore_hf/` is committed to the Hugging Face Space repository for instant zero-setup cold boots.
+- [ ] For local development, `data/vectorstore/` provides FastEmbed embeddings offline.
 
 ### 7. Environment Variables
 - [ ] Copy and populate `.env` files from templates:
-  - `frontend/.env.example` -> `frontend/.env.local` / platform environment variables
-  - `backend/.env.example` -> `backend/.env`
-  - `rag-service/.env.example` -> `rag-service/.env`
+  - `frontend/.env.example` -> `frontend/.env.local` / Vercel platform environment variables
+  - `backend/.env.example` -> `backend/.env` / Render environment variables
+  - `rag-service/.env.example` -> `rag-service/.env` / Hugging Face Space secrets
 - [ ] Verify no secrets are exposed in client-facing bundles (only `NEXT_PUBLIC_API_URL` is public).
 
 ### 8. CORS Configuration
-- [ ] Update `CORS_ORIGIN` in both `backend/.env` and `rag-service/.env` from wildcard `*` to the exact production frontend domain.
+- [ ] Update `CORS_ORIGIN` in both `backend` and `rag-service` from wildcard `*` to the exact production frontend domain.
 
-### 9. Production URLs
-- [ ] Assign and verify public DNS / domain names and SSL/TLS certificates.
-- [ ] Point `NEXT_PUBLIC_API_URL` to the public Express backend proxy URL (e.g., `https://api.yourdomain.com`).
-- [ ] Point `RAG_SERVICE_URL` in Express to the internal/private FastAPI network URL.
-- [ ] Confirm browser clients communicate ONLY with the Express backend proxy.
-
-### 10. Health Checks & Monitoring
-- [ ] Configure automated uptime checks for:
-  - Frontend: `GET https://yourdomain.com`
-  - Backend: `GET https://api.yourdomain.com/api/health`
-  - RAG Service: `GET http://<rag-internal>:8000/api/health`
+### 9. Health Checks & Monitoring
+- [ ] Verify automated health checks:
+  - Frontend: `GET https://your-domain.vercel.app`
+  - Backend: `GET https://your-backend.onrender.com/api/health`
+  - RAG Service: `GET https://your-space.hf.space/api/health`
 - [ ] Monitor telemetry metrics at `GET /api/rag/metrics/summary` to observe latency percentiles (P50, P95) and success rates.
+
 
 
